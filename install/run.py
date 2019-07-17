@@ -9,12 +9,13 @@ def cmake(platform_dir, src_dir, arg):
         os.mkdir(platform_dir)
     os.chdir(platform_dir)				# go to platform directory
     cmd = "cmake " + arg + " ../" + src_dir
-    print("cmd")
+    print("run.py -> call cmd: {}".format(cmd))
+    print('---------------------\n')
     subprocess.call(cmd, shell=True)						# run cmake
 
 def clean(platform_dir):
     if os.path.exists(platform_dir):
-        shutil.rmtree(platform_dir)	
+        shutil.rmtree(platform_dir)
 
 if __name__ == '__main__':
     src_dir = '../src/' 					# source code directory
@@ -29,7 +30,7 @@ if __name__ == '__main__':
 
     if (platform == 'darwin'): 			# platform directory is created if not found
         platform = 'mac'
-        cmd = '-G Xcode' 
+        cmd = '-G Xcode'
 
     platform_dir = bin_dir + platform
 
