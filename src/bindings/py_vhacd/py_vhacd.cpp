@@ -1,4 +1,5 @@
 /* Copyright (c) 2011 Khaled Mamou (kmamou at gmail dot com)
+Modified by Yijiang Huang (yijiangh@mit.edu) July 2019
  All rights reserved.
 
 
@@ -27,16 +28,20 @@
 
 //#define _CRTDBG_MAP_ALLOC
 
+// find memory leaks with the CRT library
 #ifdef _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 #include <stdlib.h>
 #endif // _CRTDBG_MAP_ALLOC
 
 #include "VHACD.h"
-#include "oclHelper.h"
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/iostream.h>
 
 using namespace VHACD;
 using namespace std;
+namespace py = pybind11;
 
 class MyCallback : public IVHACD::IUserCallback {
 public:
@@ -50,6 +55,7 @@ public:
              << operation << " " << setfill(' ') << setw(3) << (int)(operationProgress + 0.5) << "%" << endl;
     };
 };
+
 class MyLogger : public IVHACD::IUserLogger {
 public:
     MyLogger(void) {}
@@ -70,6 +76,7 @@ public:
 private:
     ofstream m_file;
 };
+
 struct Material {
 
     float m_diffuseColor[3];
@@ -94,6 +101,7 @@ struct Material {
         m_transparency = 0.5f;
     };
 };
+
 struct Parameters {
     unsigned int m_oclPlatformID;
     unsigned int m_oclDeviceID;
@@ -112,6 +120,7 @@ struct Parameters {
         m_fileNameLog = "log.txt";
     }
 };
+
 bool LoadOFF(const string& fileName, vector<float>& points, vector<int>& triangles, IVHACD::IUserLogger& logger);
 bool LoadOBJ(const string& fileName, vector<float>& points, vector<int>& triangles, IVHACD::IUserLogger& logger);
 bool SaveOFF(const string& fileName, const float* const& points, const int* const& triangles, const unsigned int& nPoints,
@@ -125,49 +134,20 @@ void ComputeRandomColor(Material& mat);
 void Usage(const Parameters& params);
 void ParseParameters(int argc, char* argv[], Parameters& params);
 
-#ifdef CL_VERSION_1_1
-bool InitOCL(const unsigned int oclPlatformID, const unsigned int oclDeviceID, OCLHelper& oclHelper, std::ostringstream& msg);
-#endif // CL_VERSION_1_1
-
-int main(int argc, char* argv[])
+int test_main(Parameters &params, bool verbose)
 {
-    // --input camel.off --output camel_acd.wrl --log log.txt --resolution 1000000 --depth 20 --concavity 0.0025 --planeDownsampling 4 --convexhullDownsampling 4 --alpha 0.05 --beta 0.05 --gamma 0.00125 --pca 0 --mode 0 --maxNumVerticesPerCH 256 --minVolumePerCH 0.0001 --convexhullApproximation 1 --oclDeviceID 2
     {
-        // set parameters
-        Parameters params;
-        ParseParameters(argc, argv, params);
         MyCallback myCallback;
         MyLogger myLogger(params.m_fileNameLog);
         params.m_paramsVHACD.m_logger = &myLogger;
         params.m_paramsVHACD.m_callback = &myCallback;
-        Usage(params);
+        // Usage(params);
         if (!params.m_run) {
             return 0;
         }
 
         std::ostringstream msg;
-#ifdef CL_VERSION_1_1
-        msg << "+ OpenCL (ON)" << std::endl;
-        OCLHelper oclHelper;
-        if (params.m_paramsVHACD.m_oclAcceleration) {
-            bool res = InitOCL(params.m_oclPlatformID,
-                params.m_oclDeviceID,
-                oclHelper,
-                msg);
-            if (!res) {
-                myLogger.Log(msg.str().c_str());
-                return -1;
-            }
-        }
-#else //CL_VERSION_1_1
-        msg << "+ OpenCL (OFF)" << std::endl;
-#endif //CL_VERSION_1_1
 
-#ifdef _OPENMP
-        msg << "+ OpenMP (ON)" << std::endl;
-#else
-        msg << "+ OpenMP (OFF)" << std::endl;
-#endif
         msg << "+ Parameters" << std::endl;
         msg << "\t input                                       " << params.m_fileNameIn << endl;
         msg << "\t resolution                                  " << params.m_paramsVHACD.m_resolution << endl;
@@ -190,7 +170,7 @@ int main(int argc, char* argv[])
         msg << "+ Load mesh" << std::endl;
         myLogger.Log(msg.str().c_str());
 
-        cout << msg.str().c_str();
+        if (verbose) cout << msg.str().c_str();
 
         // load mesh
         vector<float> points;
@@ -199,30 +179,26 @@ int main(int argc, char* argv[])
         GetFileExtension(params.m_fileNameIn, fileExtension);
         if (fileExtension == ".OFF") {
             if (!LoadOFF(params.m_fileNameIn, points, triangles, myLogger)) {
+                cout << "load off fails: " << params.m_fileNameIn << endl;
                 return -1;
             }
         }
         else if (fileExtension == ".OBJ") {
             if (!LoadOBJ(params.m_fileNameIn, points, triangles, myLogger)) {
+                cout << "load obj fails: " << params.m_fileNameIn << endl;
                 return -1;
             }
         }
         else {
             myLogger.Log("Format not supported!\n");
+            cout << "input format not supported: " << params.m_fileNameIn << endl;
             return -1;
         }
 
         // run V-HACD
         IVHACD* interfaceVHACD = CreateVHACD();
+        // IVHACD* interfaceVHACD = CreateVHACD_ASYNC();
 
-#ifdef CL_VERSION_1_1
-        if (params.m_paramsVHACD.m_oclAcceleration) {
-            bool res = interfaceVHACD->OCLInit(oclHelper.GetDevice(), &myLogger);
-            if (!res) {
-                params.m_paramsVHACD.m_oclAcceleration = false;
-            }
-        }
-#endif //CL_VERSION_1_1
         bool res = interfaceVHACD->Compute(&points[0], (unsigned int)points.size() / 3,
             (const uint32_t *)&triangles[0], (unsigned int)triangles.size() / 3, params.m_paramsVHACD);
 
@@ -279,15 +255,6 @@ int main(int argc, char* argv[])
             myLogger.Log("Decomposition cancelled by user!\n");
         }
 
-#ifdef CL_VERSION_1_1
-        if (params.m_paramsVHACD.m_oclAcceleration) {
-            bool res = interfaceVHACD->OCLRelease(&myLogger);
-            if (!res) {
-                assert(-1);
-            }
-        }
-#endif //CL_VERSION_1_1
-
         interfaceVHACD->Clean();
         interfaceVHACD->Release();
     }
@@ -296,6 +263,57 @@ int main(int argc, char* argv[])
 #endif // _CRTDBG_MAP_ALLOC
     return 0;
 }
+
+PYBIND11_MODULE(py_vhacd, m) {
+    m.doc() = "python wrapper for v-hacd";
+
+    m.def("compute",
+    [](std::string &input, std::string &output, std::string &log,
+      int resolution, double concavity,
+      int planeDownsampling, int convexhullDownsampling,
+      int convexhullApproximation, int maxConvexHulls,
+      double alpha, double beta,
+      int pca, int mode, int maxNumVerticesPerCH, double minVolumePerCH,
+      bool verbose)
+    {
+      // set up parameters
+      Parameters params;
+      params.m_fileNameIn = input;
+      params.m_fileNameOut = output;
+      params.m_fileNameLog = log;
+      params.m_paramsVHACD.m_resolution = resolution;
+      params.m_paramsVHACD.m_concavity = concavity;
+      params.m_paramsVHACD.m_planeDownsampling = planeDownsampling;
+      params.m_paramsVHACD.m_convexhullDownsampling = convexhullDownsampling;
+      params.m_paramsVHACD.m_alpha = alpha;
+      params.m_paramsVHACD.m_beta = beta;
+      params.m_paramsVHACD.m_maxConvexHulls = maxConvexHulls;
+      params.m_paramsVHACD.m_pca = pca;
+      params.m_paramsVHACD.m_mode = mode;
+      params.m_paramsVHACD.m_maxNumVerticesPerCH = maxNumVerticesPerCH;
+      params.m_paramsVHACD.m_minVolumePerCH = minVolumePerCH;
+      params.m_paramsVHACD.m_convexhullApproximation = convexhullApproximation;
+      // params.m_paramsVHACD.m_oclAcceleration = atoi(argv[i]);
+      // params.m_oclPlatformID = atoi(argv[i]);
+      // params.m_oclDeviceID = atoi(argv[i]);
+
+      params.m_paramsVHACD.m_resolution = (params.m_paramsVHACD.m_resolution < 64) ? 0 : params.m_paramsVHACD.m_resolution;
+      params.m_paramsVHACD.m_planeDownsampling = (params.m_paramsVHACD.m_planeDownsampling < 1) ? 1 : params.m_paramsVHACD.m_planeDownsampling;
+      params.m_paramsVHACD.m_convexhullDownsampling = (params.m_paramsVHACD.m_convexhullDownsampling < 1) ? 1 : params.m_paramsVHACD.m_convexhullDownsampling;
+
+      return test_main(params, verbose);
+    },
+    py::arg("input"), py::arg("output"), py::arg("log"),
+    py::arg("resolution")=100000, py::arg("concavity")=0.001,
+    py::arg("planeDownsampling")=4, py::arg("convexhullDownsampling")=4,
+    py::arg("convexhullApproximation")=1, py::arg("maxConvexHulls")=1024,
+    py::arg("alpha")=0.05, py::arg("beta")=0.05,
+    py::arg("pca")=0, py::arg("mode")=0,
+    py::arg("maxNumVerticesPerCH")=64, py::arg("minVolumePerCH")=0.0001,
+    py::arg("verbose")=0
+    ); // end compute function
+
+} // end py_vhacd def
 
 void Usage(const Parameters& params)
 {
@@ -334,6 +352,7 @@ void Usage(const Parameters& params)
         params.m_paramsVHACD.m_logger->Log(msg.str().c_str());
     }
 }
+
 void ParseParameters(int argc, char* argv[], Parameters& params)
 {
     for (int i = 1; i < argc; ++i) {
@@ -418,43 +437,6 @@ void ParseParameters(int argc, char* argv[], Parameters& params)
     params.m_paramsVHACD.m_convexhullDownsampling = (params.m_paramsVHACD.m_convexhullDownsampling < 1) ? 1 : params.m_paramsVHACD.m_convexhullDownsampling;
 }
 
-#ifdef CL_VERSION_1_1
-bool InitOCL(const unsigned int oclPlatformID, const unsigned int oclDeviceID, OCLHelper& oclHelper, std::ostringstream& msg)
-{
-
-    bool res = true;
-    vector<string> info;
-    res = oclHelper.GetPlatformsInfo(info, "\t\t");
-    if (!res)
-        return res;
-
-    const size_t numPlatforms = info.size();
-    msg << "\t Number of OpenCL platforms: " << numPlatforms << endl;
-    for (size_t i = 0; i < numPlatforms; ++i) {
-        msg << "\t OpenCL platform [" << i << "]" << endl;
-        msg << info[i];
-    }
-    msg << "\t Using OpenCL platform [" << oclPlatformID << "]" << endl;
-    res = oclHelper.InitPlatform(oclPlatformID);
-    if (!res)
-        return res;
-
-    info.clear();
-    res = oclHelper.GetDevicesInfo(info, "\t\t");
-    if (!res)
-        return res;
-
-    const size_t numDevices = info.size();
-    msg << "\t Number of OpenCL devices: " << numDevices << endl;
-    for (size_t i = 0; i < numDevices; ++i) {
-        msg << "\t OpenCL device [" << i << "]" << endl;
-        msg << info[i];
-    }
-    msg << "\t Using OpenCL device [" << oclDeviceID << "]" << endl;
-    res = oclHelper.InitDevice(oclDeviceID);
-    return res;
-}
-#endif // CL_VERSION_1_1
 void GetFileExtension(const string& fileName, string& fileExtension)
 {
     size_t lastDotPosition = fileName.find_last_of(".");
@@ -466,6 +448,7 @@ void GetFileExtension(const string& fileName, string& fileExtension)
         transform(fileExtension.begin(), fileExtension.end(), fileExtension.begin(), ::toupper);
     }
 }
+
 void ComputeRandomColor(Material& mat)
 {
     mat.m_diffuseColor[0] = mat.m_diffuseColor[1] = mat.m_diffuseColor[2] = 0.0f;
@@ -475,6 +458,7 @@ void ComputeRandomColor(Material& mat)
         mat.m_diffuseColor[2] = (rand() % 100) / 100.0f;
     }
 }
+
 bool LoadOFF(const string& fileName, vector<float>& points, vector<int>& triangles, IVHACD::IUserLogger& logger)
 {
     FILE* fid = fopen(fileName.c_str(), "r");
@@ -523,6 +507,7 @@ bool LoadOFF(const string& fileName, vector<float>& points, vector<int>& triangl
     }
     return true;
 }
+
 bool LoadOBJ(const string& fileName, vector<float>& points, vector<int>& triangles, IVHACD::IUserLogger& logger)
 {
     const unsigned int BufferSize = 1024;

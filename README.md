@@ -2,15 +2,39 @@
 
 :pushpin: The goal of my fork is to create a cross-platform, lightweight python wrapper for V-HACD.
 
-I refer to the [V_HACD](https://github.com/bulletphysics/bullet3/blob/master/Extras/VHACD/test/src/main.cpp) module in the bullet physics simulation engine a lot. But it seems like the V-HACD functionalities are not exposed in the pybullet interface.
-
 <img src="doc/acd.png" alt="Approximate convex decomposition of Camel" width="500"/>
+
+## Prerequisites
+
+The following dependencies come from [pybind11] for building the python wrappers.
+
+**On Unix (Linux, OS X)**
+
+* A compiler with C++11 support
+* CMake >= 2.8.12
+
+**On Windows**
+
+* Visual Studio 2015 (required for all Python versions, see notes below)
+* CMake >= 3.1
+
+**Note**: *V-HACD*'s python binding `py_vhacd` is built with a CMake-based build system via [pybind11].
+**It is highly recommended (especially for Windows users) to test the environment with the [cmake_example for pybind11](https://github.com/pybind/cmake_example) before proceeding to build conmech.**
 
 # Installation
 
+Just clone this repository and pip install. Note the `--recursive` option which is needed for cloning the submodules:
+
+```bash
+git clone --recursive https://github.com/yijiangh/v-hacd
+cd v-hacd/src
+pip install . # maybe with --user`
+```
+
+With the `setup.py` file included in the `src` folder, the pip install command will invoke CMake and build the pybind11 module as specified in CMakeLists.txt.
+
 ## Build from source
-### Windows
-Prerequisites: install [cmake](https://cmake.org/)
+**Warning**: only tested on Windows so far... will test on Linux/OSX soon. 
 
 ```powershell
 cd install
@@ -20,21 +44,30 @@ cd ../build/win32
 cmake --build .
 ```
 
-Then you should be able to find the built binary at `<path>\v-hacd\build\win32\test\Debug\testVHACD.exe`.
+Then you should be able to find the built original test binary at `<path>\v-hacd\build\<OS>\test\Debug\testVHACD.exe`.
 
-# Command line usage examples
+The bulit python binding module can by found at `<path>\v-hacd\build\<OS>\bindings\py_vhacd\Debug\`. For Windows on AMD64, the module file is `py_vhacd.cp37-win_amd64.pyd`.
 
-## Windows
+# Examples
+## Python binding
 
-Lower quality but faster:
-* `testVHACD.exe --input <input>.obj --output <output>.wrl --log log.txt --resolution 100000 --depth 20 --concavity 0.0025 --planeDownsampling 4 --convexhullDownsampling 4 --alpha 0.05 --beta 0.05 --gamma 0.00125 --pca 0 --mode 0 --maxNumVerticesPerCH 64 --minVolumePerCH 0.0`
+```python
+import py_vhacd
 
-High quality but slow:
-* `testVHACD.exe --input <input>.obj --output <output>.wrl --log log.txt --resolution 8000000 --depth 20 --concavity 0.0025 --planeDownsampling 4 --convexhullDownsampling 4 --alpha 0.05 --beta 0.05 --gamma 0.00125 --pca 0 --mode 0 --maxNumVerticesPerCH 64 --minVolumePerCH 0.0`
+success = py_vhacd.compute(input='<your_obj>.obj', output='output.obj', log='log_file.log', \
+verbose=1, resolution=1000000))
+```
 
-The main difference is on the `--resolution` parameter, increased from `100000` to `8000000`.
+## Call the original binary from commandline
+### Windows
 
-## OSX, Linux
+```cmd
+testVHACD.exe --input <input>.obj --output <output>.wrl --log log.txt --resolution 100000
+```
+
+Try increasing the resultion to `1000000` to get better results but with longer runtime.
+
+### OSX, Linux
 
 Coming soon.
 
@@ -64,18 +97,17 @@ Coming soon.
 | `--output` | VRML 2.0 .wrl output file name | - | - |
 | `--log` | log file name | - | - |
 | `--resolution` | maximum number of voxels generated during the voxelization stage	| 100,000 | 10,000-64,000,000 |
-| `--depth` |	maximum number of clipping stages. During each split stage, all the model parts (with a concavity higher than the user defined threshold) are clipped according the "best" clipping plane | 20 | 1-32 |
 | `--concavity` |	maximum concavity |	0.0025 | 0.0-1.0 |
 | `--planeDownsampling` |	controls the granularity of the search for the "best" clipping plane | 4 | 1-16 |
 | `--convexhullDownsampling` | controls the precision of the convex-hull generation process during the clipping plane selection stage | 4 | 1-16 |
 | `--alpha` | controls the bias toward clipping along symmetry planes | 0.05 | 0.0-1.0 |
 | `--beta` | controls the bias toward clipping along revolution axes | 0.05 | 0.0-1.0 |
-| `--gamma` |	maximum allowed concavity during the merge stage | 0.00125 | 0.0-1.0 |
 | `--delta` |  Controls the bias toward maximaxing local concavity | 0.05 | 0.0-1.0 |
 | `--pca` |	enable/disable normalizing the mesh before applying the convex decomposition | 0 | 0, 1 |
 | `--mode` | 0: voxel-based approximate convex decomposition, 1: tetrahedron-based approximate convex decomposition | 0 | 0, 1 |
 | `--maxNumVerticesPerCH` |	controls the maximum number of triangles per convex-hull | 64 | 4-1024 |
 | `--minVolumePerCH` | controls the adaptive sampling of the generated convex-hulls | 0.0001 | 0.0-0.01 |
+| `--maxConvexHulls` |  maximum number of convex hulls to produce from the merge operation; *replaces 'gamma'.* | 0-inf? | 1024 |
 | `--convexhullApproximation` | Enable/disable approximation when computing convex-hulls | 1 | 0, 1 |
 | `--oclAcceleration` | Enable/disable OpenCL acceleration | 0 | 0, 1 |
 
@@ -97,7 +129,7 @@ A second approach consists in computing an exact convex decomposition of a surfa
 ![V-HACD Results (3/4)](https://raw.githubusercontent.com/kmammou/v-hacd/master/doc/snapshots_3.png)
 ![V-HACD Results (4/4)](https://raw.githubusercontent.com/kmammou/v-hacd/master/doc/snapshots_4.png) -->
 
-# Citation
+# References
 
 The author of the [original V-HACD](https://github.com/kmammou/v-hacd) is [Khaled Mammou](http://www.khaledmammou.com/index.htm)
  ([@kmammou](https://github.com/kmammou)). In his [blog post](http://kmamou.blogspot.com/2011/10/hacd-hierarchical-approximate-convex.html), you will find more information on the history of the birth of this project.
@@ -112,3 +144,5 @@ Details of the algorithm used in V-HACD can be found in the following paper:
       year={2009},
       organization={IEEE}
     }
+
+[pybind11]: https://github.com/pybind/pybind11
