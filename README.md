@@ -57,7 +57,7 @@ from py_vhacd import compute_convex_decomp
 sucess, mesh_verts, mesh_faces = compute_convex_decomp(input_path, output_path, log_path, resolution=100000, verbose=True)
 ```
 
-See [py_vhacd_test.py](src/bindings/test/scripts/py_vhacd_test.py) for a more detailed example. To run this test file:
+See [py_vhacd_test.py](src/bindings/test/scripts/py_vhacd-test.py) for a more detailed example. To run this test file:
 
 ```
 cd src/bindings/test/scripts
