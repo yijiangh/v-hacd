@@ -9,7 +9,7 @@ def main(precompute=False):
     parser = argparse.ArgumentParser()
     # rack.obj | cage.obj |
     parser.add_argument('-i', '--input', default='rack.obj', help='The name of the problem to solve')
-    parser.add_argument('-of', '--output_format', default='wrl', help='the output file format (obj, wrl, off)')
+    parser.add_argument('-of', '--output_format', default='wrl', help='the output file format (obj, wrl)')
     parser.add_argument('-res', '--resolution', default=100000, help='maximum number of voxels generated during the voxelization stage (default 100000, range 10,000-64,000,000)')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose (default false).')
     parser.add_argument('-wo', '--write_output', action='store_true', help='If generate obj/wrl result file. (default false)')

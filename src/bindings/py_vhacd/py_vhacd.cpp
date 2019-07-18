@@ -133,7 +133,7 @@ bool SaveOBJ(ofstream& fout, const double* const& points, const int* const& tria
 void GetFileExtension(const string& fileName, string& fileExtension);
 void ComputeRandomColor(Material& mat);
 int ComputeHACD(Parameters &params, const bool &verbose,
-                const bool &write_output, const bool &write_log,
+                const bool &write_output, const bool &write_log, const bool &export_separate_files,
                 std::vector<std::vector<std::vector<double>>> &mesh_verts,
                 std::vector<std::vector<std::vector<int>>> &mesh_faces);
 
@@ -147,7 +147,7 @@ PYBIND11_MODULE(py_vhacd, m) {
       int convexhullApproximation, int maxConvexHulls,
       double alpha, double beta,
       int pca, int mode, int maxNumVerticesPerCH, double minVolumePerCH,
-      bool verbose)
+      bool verbose, bool export_separate_files)
     {
       // // capture standard output from ostream
       // // https://pybind11.readthedocs.io/en/stable/advanced/pycpp/utilities.html?highlight=cout
@@ -194,7 +194,7 @@ PYBIND11_MODULE(py_vhacd, m) {
       std::vector<std::vector<std::vector<double>>> mesh_verts;
       std::vector<std::vector<std::vector<int>>> mesh_faces;
 
-      int success = ComputeHACD(params, verbose, write_output, write_log, mesh_verts, mesh_faces);
+      int success = ComputeHACD(params, verbose, write_output, write_log, export_separate_files, mesh_verts, mesh_faces);
 
       if (success != 0) cout << "HCACD failed: return code: " << success << endl;
 
@@ -207,7 +207,7 @@ PYBIND11_MODULE(py_vhacd, m) {
     py::arg("alpha")=0.05, py::arg("beta")=0.05,
     py::arg("pca")=0, py::arg("mode")=0,
     py::arg("maxNumVerticesPerCH")=64, py::arg("minVolumePerCH")=0.0001,
-    py::arg("verbose")=0
+    py::arg("verbose")=0, py::arg("export_separate_files")=1
     ); // end compute function
 
     py::add_ostream_redirect(m, "ostream_redirect");
@@ -215,7 +215,7 @@ PYBIND11_MODULE(py_vhacd, m) {
 } // end py_vhacd def
 
 int ComputeHACD(Parameters &params, const bool &verbose,
-                const bool &write_output, const bool &write_log,
+                const bool &write_output, const bool &write_log, const bool &export_separate_files,
                 std::vector<std::vector<std::vector<double>>> &mesh_verts,
                 std::vector<std::vector<std::vector<int>>> &mesh_faces)
 {
@@ -347,8 +347,10 @@ int ComputeHACD(Parameters &params, const bool &verbose,
           if (write_output)
           {
             std::string ext;
+            std::string output_filename;
             if (params.m_fileNameOut.length() > 4) {
-                ext = params.m_fileNameOut.substr(params.m_fileNameOut.length()-4);
+              output_filename = params.m_fileNameOut.substr(0, params.m_fileNameOut.length()-4);
+              ext = params.m_fileNameOut.substr(params.m_fileNameOut.length()-4);
             }
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
             unsigned int nConvexHulls = interfaceVHACD->GetNConvexHulls();
@@ -362,8 +364,9 @@ int ComputeHACD(Parameters &params, const bool &verbose,
             }
 
             IVHACD::ConvexHull ch;
-            if (ext != ".obj") {
+            if (ext == ".wrl") {
                 // save output as wrl
+              if (!export_separate_files) {
                 ofstream foutCH(params.m_fileNameOut.c_str());
                 if (foutCH.is_open()) {
                     Material mat;
@@ -376,25 +379,82 @@ int ComputeHACD(Parameters &params, const bool &verbose,
                         if (write_log) myLogger.Log(msg.str().c_str());
                     }
                     foutCH.close();
-                }
-            }
-            else {
-                // save as obj
-                ofstream foutCH(params.m_fileNameOut.c_str());
-                if (foutCH.is_open()) {
+                } // end foutCH isopen
+              } else {
                     Material mat;
-                    int vertexOffset = 1; // obj wavefront starts counting at 1...
                     for (unsigned int p = 0; p < nConvexHulls; ++p) {
-                        interfaceVHACD->GetConvexHull(p, ch);
-                        SaveOBJ(foutCH, ch.m_points, (const int *)ch.m_triangles, ch.m_nPoints, ch.m_nTriangles, mat, myLogger, p, vertexOffset, write_log);
-                        vertexOffset+=ch.m_nPoints;
-                        msg.str("");
-                        msg << "\t CH[" << setfill('0') << setw(5) << p << "] " << ch.m_nPoints << " V, " << ch.m_nTriangles << " T" << endl;
-                        if (write_log) myLogger.Log(msg.str().c_str());
-                    }
-                    foutCH.close();
+                        ofstream foutCH((output_filename + '_' + std::to_string(p) + ext).c_str());
+                        if (foutCH.is_open()) {
+                          interfaceVHACD->GetConvexHull(p, ch);
+                          ComputeRandomColor(mat);
+                          SaveVRML2(foutCH, ch.m_points, (const int *)ch.m_triangles, ch.m_nPoints, ch.m_nTriangles, mat, myLogger, write_log);
+                          msg.str("");
+                          msg << "\t CH[" << setfill('0') << setw(5) << p << "] " << ch.m_nPoints << " V, " << ch.m_nTriangles << " T" << endl;
+                          if (write_log) myLogger.Log(msg.str().c_str());
+                          foutCH.close();
+                      } // end fout isopen
+                    } // end for nConvexHulls
+                } // end if export_separate_files
+            } // end ext == wrl
+
+            if (ext == ".obj") {
+                // save as obj
+                if (!export_separate_files) {
+                  ofstream foutCH(params.m_fileNameOut.c_str());
+                  if (foutCH.is_open()) {
+                      Material mat;
+                      int vertexOffset = 1; // obj wavefront starts counting at 1...
+                      for (unsigned int p = 0; p < nConvexHulls; ++p) {
+                          interfaceVHACD->GetConvexHull(p, ch);
+                          SaveOBJ(foutCH, ch.m_points, (const int *)ch.m_triangles, ch.m_nPoints, ch.m_nTriangles, mat, myLogger, p, vertexOffset, write_log);
+                          vertexOffset+=ch.m_nPoints;
+                          msg.str("");
+                          msg << "\t CH[" << setfill('0') << setw(5) << p << "] " << ch.m_nPoints << " V, " << ch.m_nTriangles << " T" << endl;
+                          if (write_log) myLogger.Log(msg.str().c_str());
+                      }
+                      foutCH.close();
+                  } // end if foutCH isopen
                 }
-            }
+                else {
+                    Material mat;
+                    for (unsigned int p = 0; p < nConvexHulls; ++p) {
+                          ofstream foutCH((output_filename + '_' + std::to_string(p) + ext).c_str());
+                          int vertexOffset = 1; // obj wavefront starts counting at 1...
+                          if (foutCH.is_open()) {
+                            interfaceVHACD->GetConvexHull(p, ch);
+                            SaveOBJ(foutCH, ch.m_points, (const int *)ch.m_triangles, ch.m_nPoints, ch.m_nTriangles, mat, myLogger, p, vertexOffset, write_log);
+                            msg.str("");
+                            msg << "\t CH[" << setfill('0') << setw(5) << p << "] " << ch.m_nPoints << " V, " << ch.m_nTriangles << " T" << endl;
+                            if (write_log) myLogger.Log(msg.str().c_str());
+                            foutCH.close();
+                          } // end foutCH isopen
+                    } // end for nConvexHulls
+                } // end if export_separate_files
+            } // ext == obj
+
+            // if (ext == ".off") {
+            //     // save as off
+            //     if (!export_separate_files) {
+            //         Material mat;
+            //         for (unsigned int p = 0; p < nConvexHulls; ++p) {
+            //             interfaceVHACD->GetConvexHull(p, ch);
+            //             SaveOFF(params.m_fileNameOut, ch.m_points, (const int *)ch.m_triangles, ch.m_nPoints, ch.m_nTriangles, myLogger, write_log);
+            //             msg.str("");
+            //             msg << "\t CH[" << setfill('0') << setw(5) << p << "] " << ch.m_nPoints << " V, " << ch.m_nTriangles << " T" << endl;
+            //             if (write_log) myLogger.Log(msg.str().c_str());
+            //           }
+            //     } else {
+            //         Material mat;
+            //         for (unsigned int p = 0; p < nConvexHulls; ++p) {
+            //             interfaceVHACD->GetConvexHull(p, ch);
+            //             SaveOFF(output_filename + '_' + std::to_string(p) + ext, ch.m_points, (const int *)ch.m_triangles, ch.m_nPoints, ch.m_nTriangles, myLogger, write_log);
+            //             msg.str("");
+            //             msg << "\t CH[" << setfill('0') << setw(5) << p << "] " << ch.m_nPoints << " V, " << ch.m_nTriangles << " T" << endl;
+            //             if (write_log) myLogger.Log(msg.str().c_str());
+            //         } // end for nConvexHulls
+            //     } // end if export_separate_files
+            // } // ext == off
+
         } // end if write_output
 
       } // if res
