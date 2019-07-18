@@ -3,4 +3,6 @@ data2/
 build/
 *.pyc
 *.pyd
-*/__pycache__
+*/__pycache__/
+src/bindings/test/output/
+src/bindings/test/log/

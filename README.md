@@ -34,7 +34,7 @@ pip install . # maybe with --user`
 With the `setup.py` file included in the `src` folder, the pip install command will invoke CMake and build the pybind11 module as specified in CMakeLists.txt.
 
 ## Build from source
-**Warning**: only tested on Windows so far... will test on Linux/OSX soon. 
+**Warning**: only tested on Windows so far... will test on Linux/OSX soon.
 
 ```powershell
 cd install
@@ -52,11 +52,19 @@ The bulit python binding module can by found at `<path>\v-hacd\build\<OS>\bindin
 ## Python binding
 
 ```python
-import py_vhacd
+from py_vhacd import compute_convex_decomp
 
-success = py_vhacd.compute(input='<your_obj>.obj', output='output.obj', log='log_file.log', \
-verbose=1, resolution=1000000))
+sucess, mesh_verts, mesh_faces = compute_convex_decomp(input_path, output_path, log_path, resolution=100000, verbose=True)
 ```
+
+See [py_vhacd_test.py](src/bindings/test/scripts/py_vhacd_test.py) for a more detailed example. To run this test file:
+
+```
+cd src/bindings/test/scripts
+python -m py_vhacd-test -v -wo -wl
+```
+
+Type `python -m py_vhacd-test -h` for helpers on optional arguments.
 
 ## Call the original binary from commandline
 ### Windows
@@ -65,7 +73,7 @@ verbose=1, resolution=1000000))
 testVHACD.exe --input <input>.obj --output <output>.wrl --log log.txt --resolution 100000
 ```
 
-Try increasing the resultion to `1000000` to get better results but with longer runtime.
+Try increasing the resultion to get better results but with longer runtime.
 
 ### OSX, Linux
 
@@ -91,7 +99,7 @@ Coming soon.
 1. Note that the processing may take some time.  Increasing voxel resolution will particularly increase runtime. -->
 
 # Parameters
-| cmd Parameter | Description | Default value | Range |
+| CMD Parameter | Description | Default value | Range |
 | ------------- | ------------- | ------------- | ---- |
 | `--input` | wavefront .obj input file name | - | - |
 | `--output` | VRML 2.0 .wrl output file name | - | - |
